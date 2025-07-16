@@ -7,7 +7,7 @@ export PATH="$TC_DIR/bin:$PATH"
 
 # Build metadata
 export KBUILD_BUILD_USER="Aquamarine"
-export KBUILD_BUILD_HOST="@quietpulses"
+export KBUILD_BUILD_HOST="quietpulses"
 export CONFIG_NO_ERROR_ON_MISMATCH=y
 export CONFIG_DEBUG_SECTION_MISMATCH=y
 
