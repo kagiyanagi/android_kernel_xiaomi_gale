@@ -53,7 +53,7 @@ jobs:
           ZIP_NAME="aquamarine-kernel-gale-$(date +%Y%m%d-%H%M)-run-${{ github.run_number }}.zip"
 
           # Prepare AnyKernel3
-          git clone --depth=1 https://github.com/quietpulse/AnyKernel3.git AnyKernel3
+          git clone --depth=1 https://github.com/kagiyanagi/AnyKernel3.git AnyKernel3
           rm -rf AnyKernel3/{.git,.github,LICENSE,README.md}
 
           # Copy built images into AnyKernel3
