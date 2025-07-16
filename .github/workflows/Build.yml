@@ -3,71 +3,97 @@ on:
   workflow_dispatch:
 
 jobs:
-
-  buildkernel:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout repository
-      - uses: actions/checkout@v4
-      
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Display Python version
-        run: python --version
-
-      # Setup environment
       - name: Setup environment
-        run: |   
+        run: |
+            # Installing dependencies
             sudo apt-get update && sudo apt-get install -y \
-             bc flex git ccache automake lzop bison gperf build-essential \
-            zip curl zlib1g-dev g++-multilib python3-networkx libxml2-utils \
-            bzip2 libbz2-dev squashfs-tools pngcrush schedtool dpkg-dev \
-            liblz4-tool optipng libssl-dev python-is-python3 python3-virtualenv
-            
-            # Setup repo
+              flex git ccache automake lzop bison gperf build-essential \
+              zip curl zlib1g-dev g++-multilib python3-networkx libxml2-utils \
+              bzip2 libbz2-dev squashfs-tools pngcrush schedtool dpkg-dev \
+              liblz4-tool optipng libssl-dev python-is-python3 \
+              python3-virtualenv clang-format clang-tidy clang-tools clang \
+              clangd libc++-dev libc++1 libc++abi-dev libc++abi1 libclang-dev \
+              libclang1 liblldb-dev libllvm-ocaml-dev libomp-dev libomp5 lld lldb \
+              llvm-dev llvm-runtime llvm python3-clang
+            sudo apt-get install bc gcc-aarch64-linux-gnu
+
+            # Clone Proton Clang for LTO/Ccache
+            git clone \
+              https://gitlab.com/LeCmnGend/proton-clang \
+              -b clang-18 --depth=1 "${{ github.workspace }}/proton-clang"
+
+            # Install 'repo' tool
             mkdir -p ~/.bin
-            PATH="$HOME/.bin:$PATH"
-            curl https://storage.googleapis.com/git-repo-downloads/repo > ~/.bin/repo
+            curl \
+              https://storage.googleapis.com/git-repo-downloads/repo \
+              > ~/.bin/repo
             chmod a+rx ~/.bin/repo
-            
-      - name: Display Python version
-        run: python --version
 
-      # Set permissions
-      - name: Set permissions
-        run: chmod +x build_kernel.sh
-        
+            # Persist PATH for all steps
+            echo "$HOME/.bin" >> $GITHUB_PATH
+            echo "${{ github.workspace }}/proton-clang/bin" >> $GITHUB_PATH
 
-      # Build kernel with debug mode
       - name: Build kernel
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHATID: ${{ secrets.TELEGRAM_CHATID }}
         run: |
-          set -e
-          bash -x build_kernel.sh
+            # Ensure correct environment vars in build_kernel.sh
+            chmod +x build_kernel.sh
+            bash build_kernel.sh
 
-      # Package kernel
       - name: Package kernel
+        id: package
         run: |
-          git clone --depth=1 https://github.com/Mohamed4k/AnyKernel3.git -b master AnyKernel3
-          rm -rf AnyKernel3/.git AnyKernel3/.github AnyKernel3/LICENSE AnyKernel3/README.md
-          if [[ -f out/arch/arm64/boot/Image.gz-dtb ]]; then
-            cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
-          elif [[ -f out/arch/arm64/boot/Image-dtb ]]; then
-            cp out/arch/arm64/boot/Image-dtb AnyKernel3/Image-dtb
-          elif [[ -f out/arch/arm64/boot/Image.gz ]]; then
-            cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
-          elif [[ -f out/arch/arm64/boot/Image ]]; then
-            cp out/arch/arm64/boot/Image AnyKernel3/Image
-          fi
-          if [[ -f out/arch/arm64/boot/dtbo.img ]]; then
-            cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img
+          # Create unique filename with date, time and GitHub run number
+          ZIP_NAME="aquamarine-kernel-gale-$(date +%Y%m%d-%H%M)-run-${{ github.run_number }}.zip"
+
+          # Prepare AnyKernel3
+          git clone --depth=1 https://github.com/quietpulse/AnyKernel3.git AnyKernel3
+          rm -rf AnyKernel3/{.git,.github,LICENSE,README.md}
+
+          # Copy built images into AnyKernel3
+          KERNEL_OUT="out/arch/arm64/boot"
+          for file in Image.gz-dtb Image-dtb Image.gz Image; do
+            if [[ -f "$KERNEL_OUT/$file" ]]; then
+              cp "$KERNEL_OUT/$file" AnyKernel3/
+            fi
+          done
+          if [[ -f "$KERNEL_OUT/dtbo.img" ]]; then
+            cp "$KERNEL_OUT/dtbo.img" AnyKernel3/
           fi
 
-      # Upload kernel artifact
-      - name: Upload kernel to artifact
+          # Zip the contents
+          cd AnyKernel3
+          zip -r "../$ZIP_NAME" .
+          cd ..
+
+          # Expose artifact name
+          echo "zip=$ZIP_NAME" >> $GITHUB_OUTPUT
+
+      - name: Upload to GoFile
+        id: gofile
+        run: |
+          # Download uploader script
+          curl -L \
+            https://raw.githubusercontent.com/Sushrut1101/GoFile-Upload/master/upload.sh \
+            -o upload.sh
+          chmod +x upload.sh
+
+          # Use the zip from previous step
+          ZIP_FILE="${{ steps.package.outputs.zip }}"
+          URL=$(bash upload.sh "$ZIP_FILE")
+
+          # Expose GoFile URL
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "GoFile download link: $URL"
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: output_kernel
-          path: AnyKernel3/*
+          name: ${{ steps.package.outputs.zip }}
+          path: ${{ steps.package.outputs.zip }}
