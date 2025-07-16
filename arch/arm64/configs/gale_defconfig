@@ -1,3 +1,4 @@
+CONFIG_LOCALVERSION="~アクアマリン"
 CONFIG_I2C_CHARDEV=y
 ### 2023.6.13 chengyuan@longcheer.com HTH-297468  Enable last_kmsg and last_logcat support __S ###
 CONFIG_CMDLINE_EXTEND=y
