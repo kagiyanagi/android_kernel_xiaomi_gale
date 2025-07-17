@@ -12,57 +12,61 @@ jobs:
 
       - name: Setup environment
         run: |
-            # Installing dependencies
-            sudo apt-get update && sudo apt-get install -y \
-              flex git ccache automake lzop bison gperf build-essential \
-              zip curl zlib1g-dev g++-multilib python3-networkx libxml2-utils \
-              bzip2 libbz2-dev squashfs-tools pngcrush schedtool dpkg-dev \
-              liblz4-tool optipng libssl-dev python-is-python3 \
-              python3-virtualenv clang-format clang-tidy clang-tools clang \
-              clangd libc++-dev libc++1 libc++abi-dev libc++abi1 libclang-dev \
-              libclang1 liblldb-dev libllvm-ocaml-dev libomp-dev libomp5 lld lldb \
-              llvm-dev llvm-runtime llvm python3-clang
-            sudo apt-get install bc gcc-aarch64-linux-gnu
+          # Installing dependencies
+          sudo apt-get update && sudo apt-get install -y \
+            flex git ccache automake lzop bison gperf build-essential \
+            zip curl zlib1g-dev g++-multilib python3-networkx libxml2-utils \
+            bzip2 libbz2-dev squashfs-tools pngcrush schedtool dpkg-dev \
+            liblz4-tool optipng libssl-dev python-is-python3 \
+            python3-virtualenv clang-format clang-tidy clang-tools clang \
+            clangd libc++-dev libc++1 libc++abi-dev libc++abi1 libclang-dev \
+            libclang1 liblldb-dev libllvm-ocaml-dev libomp-dev libomp5 lld lldb \
+            llvm-dev llvm-runtime llvm python3-clang
+          sudo apt-get install bc gcc-aarch64-linux-gnu
 
-            # Clone Proton Clang for LTO/Ccache
-            git clone \
-              https://gitlab.com/LeCmnGend/proton-clang \
-              -b clang-18 --depth=1 "${{ github.workspace }}/proton-clang"
+          # Clone Proton Clang for LTO/Ccache
+          git clone \
+            https://gitlab.com/LeCmnGend/proton-clang \
+            -b clang-18 --depth=1 "${{ github.workspace }}/proton-clang"
 
-            # Install 'repo' tool
-            mkdir -p ~/.bin
-            curl \
-              https://storage.googleapis.com/git-repo-downloads/repo \
-              > ~/.bin/repo
-            chmod a+rx ~/.bin/repo
+          # Install 'repo' tool
+          mkdir -p ~/.bin
+          curl \
+            https://storage.googleapis.com/git-repo-downloads/repo \
+            > ~/.bin/repo
+          chmod a+rx ~/.bin/repo
 
-            # Persist PATH for all steps
-            echo "$HOME/.bin" >> $GITHUB_PATH
-            echo "${{ github.workspace }}/proton-clang/bin" >> $GITHUB_PATH
+          # Persist PATH for all steps
+          echo "$HOME/.bin" >> $GITHUB_PATH
+          echo "${{ github.workspace }}/proton-clang/bin" >> $GITHUB_PATH
 
       - name: Build kernel
         run: |
-            # Ensure correct environment vars in build_kernel.sh
-            chmod +x build_kernel.sh
-            bash build_kernel.sh
+          # Ensure correct environment vars in build_kernel.sh
+          chmod +x build_kernel.sh
+          bash build_kernel.sh
 
       - name: Package kernel
         id: package
         run: |
           # Create unique filename with date, time and GitHub run number
           ZIP_NAME="aquamarine-kernel-gale-$(date +%Y%m%d-%H%M)-run-${{ github.run_number }}.zip"
+          SHORT_NAME="${ZIP_NAME%.zip}"
 
           # Prepare AnyKernel3
           git clone --depth=1 https://github.com/kagiyanagi/AnyKernel3.git AnyKernel3
           rm -rf AnyKernel3/{.git,.github,LICENSE,README.md}
 
-          # Copy built images into AnyKernel3
+          # Copy only Image.gz into AnyKernel3
           KERNEL_OUT="out/arch/arm64/boot"
-          for file in Image.gz-dtb Image-dtb Image.gz Image; do
-            if [[ -f "$KERNEL_OUT/$file" ]]; then
-              cp "$KERNEL_OUT/$file" AnyKernel3/
-            fi
-          done
+          if [[ -f "$KERNEL_OUT/Image.gz" ]]; then
+            cp "$KERNEL_OUT/Image.gz" AnyKernel3/
+          else
+            echo "Error: Image.gz not found in $KERNEL_OUT" >&2
+            exit 1
+          fi
+
+          # Copy dtbo if it exists
           if [[ -f "$KERNEL_OUT/dtbo.img" ]]; then
             cp "$KERNEL_OUT/dtbo.img" AnyKernel3/
           fi
@@ -72,8 +76,9 @@ jobs:
           zip -r "../$ZIP_NAME" .
           cd ..
 
-          # Expose artifact name
+          # Expose both the full filename and the no‑.zip name
           echo "zip=$ZIP_NAME" >> $GITHUB_OUTPUT
+          echo "artifact_name=$SHORT_NAME" >> $GITHUB_OUTPUT
 
       - name: Upload to GoFile
         id: gofile
@@ -95,5 +100,5 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.package.outputs.zip }}
+          name: ${{ steps.package.outputs.artifact_name }}
           path: ${{ steps.package.outputs.zip }}
