@@ -1,4 +1,4 @@
-name: Android Kernel
+name: Buidl Kernel SU
 on:
   workflow_dispatch:
 
