@@ -58,7 +58,7 @@ jobs:
         id: package
         run: |
           # Create unique filename with date, time and GitHub run number
-          ZIP_NAME="aquamarine-kernel-gale-$(date +%Y%m%d-%H%M)-run-${{ github.run_number }}.zip"
+          ZIP_NAME="aquamarine-kernel-gale-$(date +%Y%m%d-%H%M)-run-${{ github.run_number }}-ksu.zip"
           SHORT_NAME="${ZIP_NAME%.zip}"
 
           # Prepare AnyKernel3
