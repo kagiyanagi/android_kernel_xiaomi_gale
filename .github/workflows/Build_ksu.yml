@@ -41,7 +41,7 @@ jobs:
           echo "$HOME/.bin" >> $GITHUB_PATH
           echo "${{ github.workspace }}/proton-clang/bin" >> $GITHUB_PATH
 
-          # integrate KernelSU non‑GKI
+          # Integrate KernelSU non‑GKI
           echo ">>> Fetching & applying KernelSU (non-GKI) patches…"
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s nongki
 
@@ -51,13 +51,13 @@ jobs:
           chmod +x build_kernel.sh
           bash build_kernel.sh
 
-          # Chack if KSU installed
+          # Check if KSU installed
           grep -R "CONFIG_KSU" out/.config
 
       - name: Package kernel
         id: package
         run: |
-          # Create unique filename with date, time and GitHub run number
+          # Create unique filename with date, time, run number, and KSU flag
           ZIP_NAME="aquamarine-kernel-gale-$(date +%Y%m%d-%H%M)-run-${{ github.run_number }}-ksu.zip"
           SHORT_NAME="${ZIP_NAME%.zip}"
 
@@ -79,12 +79,12 @@ jobs:
             cp "$KERNEL_OUT/dtbo.img" AnyKernel3/
           fi
 
-          # Zip the contents
+          # Zip the contents for GoFile upload
           cd AnyKernel3
           zip -r "../$ZIP_NAME" .
           cd ..
 
-          # Expose both the full filename and the no‑.zip name
+          # Output both the real ZIP name and the plain artifact name
           echo "zip=$ZIP_NAME" >> $GITHUB_OUTPUT
           echo "artifact_name=$SHORT_NAME" >> $GITHUB_OUTPUT
 
@@ -97,16 +97,17 @@ jobs:
             -o upload.sh
           chmod +x upload.sh
 
-          # Use the zip from previous step
+          # Upload the packaged ZIP to GoFile
           ZIP_FILE="${{ steps.package.outputs.zip }}"
           URL=$(bash upload.sh "$ZIP_FILE")
 
-          # Expose GoFile URL
           echo "url=$URL" >> $GITHUB_OUTPUT
           echo "GoFile download link: $URL"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
+          # Artifact will be named with the KSU suffix and only zipped once by GitHub
           name: ${{ steps.package.outputs.artifact_name }}
-          path: ${{ steps.package.outputs.zip }}
+          # Upload the AnyKernel3 contents directly to avoid double-zipping
+          path: AnyKernel3/**
