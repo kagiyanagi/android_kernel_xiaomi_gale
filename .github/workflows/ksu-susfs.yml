@@ -65,12 +65,16 @@ jobs:
           git clone --depth=1 https://github.com/kagiyanagi/AnyKernel3.git AnyKernel3
           rm -rf AnyKernel3/{.git,.github,LICENSE,README.md}
 
-          # Copy only Image.gz into AnyKernel3
+          # Copy kernel image into AnyKernel3, try Image.gz first, then Image
           KERNEL_OUT="out/arch/arm64/boot"
           if [[ -f "$KERNEL_OUT/Image.gz" ]]; then
             cp "$KERNEL_OUT/Image.gz" AnyKernel3/
+            echo "Copied Image.gz"
+          elif [[ -f "$KERNEL_OUT/Image" ]]; then
+            cp "$KERNEL_OUT/Image" AnyKernel3/
+            echo "Image.gz not found; copied Image instead"
           else
-            echo "Error: Image.gz not found in $KERNEL_OUT" >&2
+            echo "Error: neither Image.gz nor Image found in $KERNEL_OUT" >&2
             exit 1
           fi
 
@@ -87,6 +91,7 @@ jobs:
           # Output both the real ZIP name and the plain artifact name
           echo "zip=$ZIP_NAME" >> $GITHUB_OUTPUT
           echo "artifact_name=$SHORT_NAME" >> $GITHUB_OUTPUT
+
 
       - name: Upload to GoFile
         id: gofile
