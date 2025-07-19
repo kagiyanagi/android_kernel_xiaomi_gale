@@ -40,24 +40,38 @@ jobs:
           # Persist PATH for all steps
           echo "$HOME/.bin" >> $GITHUB_PATH
           echo "${{ github.workspace }}/proton-clang/bin" >> $GITHUB_PATH
-
-          # Integrate KernelSU non‑GKI
-          echo ">>> Fetching & applying KernelSU (non-GKI) patches…"
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
+          
+          # Apply SUSFS patches
+          git clone --depth=1 https://github.com/SukiSU-Ultra/SukiSU-Ultra.git kernel_su
+          cd kernel_su/kernel
+          bash setup.sh susfs-main
+          # copy SUSFS headers into the top-level include tree
+          cp -r include/linux/susfs* ../../include/linux/
+          cd ../..
+          rm -rf kernel_su
 
       - name: Build kernel
         run: |
-          # Ensure correct environment vars in build_kernel.sh
           chmod +x build_kernel.sh
           bash build_kernel.sh
-
           # Check if KSU installed
           grep -R "CONFIG_KSU" out/.config
+
+      - name: Build kernel modules
+        run: |
+          make O=out ARCH=arm64 modules -j$(nproc)
+
+      - name: Copy SUSFS modules
+        run: |
+          MODULE_DIR="$(pwd)/out/arch/arm64/lib/modules/$(make -s O=out ARCH=arm64 kernelrelease)"
+          mkdir -p AnyKernel3/modules
+          cp "$MODULE_DIR"/susfs.ko AnyKernel3/modules/
+          # Optional: copy KernelSU manager if built
+          cp "$MODULE_DIR"/kpmmgr.ko AnyKernel3/modules/ || true
 
       - name: Package kernel
         id: package
         run: |
-          # Create unique filename with date, time, run number, and KSU flag
           ZIP_NAME="aquamarine-kernel-gale-$(date +%Y%m%d-%H%M)-run-${{ github.run_number }}-ksu-susfs.zip"
           SHORT_NAME="${ZIP_NAME%.zip}"
 
@@ -65,7 +79,7 @@ jobs:
           git clone --depth=1 https://github.com/kagiyanagi/AnyKernel3.git AnyKernel3
           rm -rf AnyKernel3/{.git,.github,LICENSE,README.md}
 
-          # Copy kernel image into AnyKernel3, try Image.gz first, then Image
+          # Copy kernel image into AnyKernel3
           KERNEL_OUT="out/arch/arm64/boot"
           if [[ -f "$KERNEL_OUT/Image.gz" ]]; then
             cp "$KERNEL_OUT/Image.gz" AnyKernel3/
@@ -83,26 +97,22 @@ jobs:
             cp "$KERNEL_OUT/dtbo.img" AnyKernel3/
           fi
 
-          # Zip the contents for GoFile upload
+          # Zip the contents
           cd AnyKernel3
           zip -r "../$ZIP_NAME" .
           cd ..
 
-          # Output both the real ZIP name and the plain artifact name
           echo "zip=$ZIP_NAME" >> $GITHUB_OUTPUT
           echo "artifact_name=$SHORT_NAME" >> $GITHUB_OUTPUT
-
 
       - name: Upload to GoFile
         id: gofile
         run: |
-          # Download uploader script
           curl -L \
             https://raw.githubusercontent.com/Sushrut1101/GoFile-Upload/master/upload.sh \
             -o upload.sh
           chmod +x upload.sh
 
-          # Upload the packaged ZIP to GoFile
           ZIP_FILE="${{ steps.package.outputs.zip }}"
           URL=$(bash upload.sh "$ZIP_FILE")
 
@@ -112,7 +122,5 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          # Artifact will be named with the KSU suffix and only zipped once by GitHub
           name: ${{ steps.package.outputs.artifact_name }}
-          # Upload the AnyKernel3 contents directly to avoid double-zipping
           path: AnyKernel3/**
