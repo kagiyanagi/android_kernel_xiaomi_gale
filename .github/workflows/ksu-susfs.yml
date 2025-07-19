@@ -76,7 +76,7 @@ jobs:
           SHORT_NAME="${ZIP_NAME%.zip}"
 
           # Prepare AnyKernel3
-          git clone --depth=1 https://github.com/kagiyanagi/AnyKernel3.git AnyKernel3
+          git clone --depth=1 -b susfs https://github.com/kagiyanagi/AnyKernel3.git AnyKernel3
           rm -rf AnyKernel3/{.git,.github,LICENSE,README.md}
 
           # Copy kernel image into AnyKernel3
