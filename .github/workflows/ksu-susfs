@@ -1,0 +1,113 @@
+name: Build Kernel-SU SUSFS
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Installing dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y \
+            flex git ccache automake lzop bison gperf build-essential \
+            zip curl zlib1g-dev g++-multilib python3-networkx libxml2-utils \
+            bzip2 libbz2-dev squashfs-tools pngcrush schedtool dpkg-dev \
+            liblz4-tool optipng libssl-dev python-is-python3 \
+            python3-virtualenv clang-format clang-tidy clang-tools clang \
+            clangd libc++-dev libc++1 libc++abi-dev libc++abi1 libclang-dev \
+            libclang1 liblldb-dev libllvm-ocaml-dev libomp-dev libomp5 lld lldb \
+            llvm-dev llvm-runtime llvm python3-clang
+          sudo apt-get install bc gcc-aarch64-linux-gnu
+
+      - name: Setup environment
+        run: |
+          # Clone Proton Clang for LTO/Ccache
+          git clone \
+            https://gitlab.com/LeCmnGend/proton-clang \
+            -b clang-18 --depth=1 "${{ github.workspace }}/proton-clang"
+
+          # Install 'repo' tool
+          mkdir -p ~/.bin
+          curl \
+            https://storage.googleapis.com/git-repo-downloads/repo \
+            > ~/.bin/repo
+          chmod a+rx ~/.bin/repo
+
+          # Persist PATH for all steps
+          echo "$HOME/.bin" >> $GITHUB_PATH
+          echo "${{ github.workspace }}/proton-clang/bin" >> $GITHUB_PATH
+
+          # Integrate KernelSU non‑GKI
+          echo ">>> Fetching & applying KernelSU (non-GKI) patches…"
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
+
+      - name: Build kernel
+        run: |
+          # Ensure correct environment vars in build_kernel.sh
+          chmod +x build_kernel.sh
+          bash build_kernel.sh
+
+          # Check if KSU installed
+          grep -R "CONFIG_KSU" out/.config
+
+      - name: Package kernel
+        id: package
+        run: |
+          # Create unique filename with date, time, run number, and KSU flag
+          ZIP_NAME="aquamarine-kernel-gale-$(date +%Y%m%d-%H%M)-run-${{ github.run_number }}-ksu-susfs.zip"
+          SHORT_NAME="${ZIP_NAME%.zip}"
+
+          # Prepare AnyKernel3
+          git clone --depth=1 https://github.com/kagiyanagi/AnyKernel3.git AnyKernel3
+          rm -rf AnyKernel3/{.git,.github,LICENSE,README.md}
+
+          # Copy only Image.gz into AnyKernel3
+          KERNEL_OUT="out/arch/arm64/boot"
+          if [[ -f "$KERNEL_OUT/Image.gz" ]]; then
+            cp "$KERNEL_OUT/Image.gz" AnyKernel3/
+          else
+            echo "Error: Image.gz not found in $KERNEL_OUT" >&2
+            exit 1
+          fi
+
+          # Copy dtbo if it exists
+          if [[ -f "$KERNEL_OUT/dtbo.img" ]]; then
+            cp "$KERNEL_OUT/dtbo.img" AnyKernel3/
+          fi
+
+          # Zip the contents for GoFile upload
+          cd AnyKernel3
+          zip -r "../$ZIP_NAME" .
+          cd ..
+
+          # Output both the real ZIP name and the plain artifact name
+          echo "zip=$ZIP_NAME" >> $GITHUB_OUTPUT
+          echo "artifact_name=$SHORT_NAME" >> $GITHUB_OUTPUT
+
+      - name: Upload to GoFile
+        id: gofile
+        run: |
+          # Download uploader script
+          curl -L \
+            https://raw.githubusercontent.com/Sushrut1101/GoFile-Upload/master/upload.sh \
+            -o upload.sh
+          chmod +x upload.sh
+
+          # Upload the packaged ZIP to GoFile
+          ZIP_FILE="${{ steps.package.outputs.zip }}"
+          URL=$(bash upload.sh "$ZIP_FILE")
+
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "GoFile download link: $URL"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          # Artifact will be named with the KSU suffix and only zipped once by GitHub
+          name: ${{ steps.package.outputs.artifact_name }}
+          # Upload the AnyKernel3 contents directly to avoid double-zipping
+          path: AnyKernel3/**
