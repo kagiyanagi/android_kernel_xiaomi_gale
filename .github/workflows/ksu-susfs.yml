@@ -16,15 +16,7 @@ jobs:
 
       - name: Installing dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y \
-            flex git ccache automake lzop bison gperf build-essential \
-            zip curl zlib1g-dev g++-multilib python3-networkx libxml2-utils \
-            bzip2 libbz2-dev squashfs-tools pngcrush schedtool dpkg-dev \
-            liblz4-tool optipng libssl-dev python-is-python3 \
-            python3-virtualenv clang-format clang-tidy clang-tools clang \
-            clangd libc++-dev libc++1 libc++abi-dev libc++abi1 libclang-dev \
-            libclang1 liblldb-dev libllvm-ocaml-dev libomp-dev libomp5 lld lldb \
-            llvm-dev llvm-runtime llvm python3-clang
+          sudo apt-get update && sudo apt-get install -y flex git ccache automake lzop bison gperf build-essential zip curl zlib1g-dev g++-multilib python3-networkx libxml2-utils bzip2 libbz2-dev squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool optipng libssl-dev python-is-python3 python3-virtualenv clang-format clang-tidy clang-tools clang clangd libc++-dev libc++1 libc++abi-dev libc++abi1 libclang-dev libclang1 liblldb-dev libllvm-ocaml-dev libomp-dev libomp5 lld lldb llvm-dev llvm-runtime llvm python3-clang
           sudo apt-get install bc gcc-aarch64-linux-gnu
 
       - name: Setup toolchain
@@ -66,7 +58,7 @@ jobs:
       - name: Apply syscall-hooks.patch
         run: |
           # Fetch syscall_hooks.patch directly from SukiSU-Ultra repo
-          curl -fsSL https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/SukiSU_patch/hooks/syscall_hooks.patch -o syscall_hooks.patch
+          curl -fsSL https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/hooks/syscall_hooks.patch -o syscall_hooks.patch
           patch -p1 < syscall_hooks.patch
 
       - name: Apply SUSFS4KSU backport patches
