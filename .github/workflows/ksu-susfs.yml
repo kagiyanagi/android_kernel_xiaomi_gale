@@ -47,7 +47,7 @@ jobs:
           echo ">>> Fetching & applying KernelSU (non-GKI) patches…"
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s nongki
 
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-kernel-4.19
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b kernel-4.19
           git clone https://github.com/ShirkNeko/SukiSU_patch.git
 
           cp ./SukiSU_patch/hooks/syscall_hooks.patch ./
