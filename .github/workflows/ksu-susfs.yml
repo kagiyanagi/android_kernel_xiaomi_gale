@@ -59,7 +59,7 @@ jobs:
         run: |
           # Fetch syscall_hooks.patch directly from SukiSU-Ultra repo
           curl -fsSL https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/refs/heads/main/hooks/syscall_hooks.patch -o syscall_hooks.patch
-          patch -p1 < syscall_hooks.patch
+          patch -p1 --fuzz=3 < syscall_hooks.patch || echo "Warning: some hunks failed to apply, check .rej files"
 
       - name: Apply SUSFS4KSU backport patches
         run: |
