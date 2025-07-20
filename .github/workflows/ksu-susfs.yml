@@ -58,7 +58,7 @@ jobs:
       - name: Apply syscall-hooks.patch
         run: |
           # Fetch syscall_hooks.patch directly from SukiSU-Ultra repo
-          curl -fsSL https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/hooks/syscall_hooks.patch -o syscall_hooks.patch
+          curl -fsSL https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/refs/heads/main/hooks/syscall_hooks.patch -o syscall_hooks.patch
           patch -p1 < syscall_hooks.patch
 
       - name: Apply SUSFS4KSU backport patches
