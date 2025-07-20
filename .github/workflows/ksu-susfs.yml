@@ -1,14 +1,10 @@
-name: Build Kernel-SU SUSFS
+name: Kernel-SU SUSFS
 on:
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      ANDROID_VERSION: "15"
-      KERNEL_VERSION: "4.19"
-      DEFCONFIG: "gale_defconfig"
 
     steps:
       - name: Checkout repository
@@ -16,100 +12,129 @@ jobs:
 
       - name: Installing dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y flex git ccache automake lzop bison gperf build-essential zip curl zlib1g-dev g++-multilib python3-networkx libxml2-utils bzip2 libbz2-dev squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool optipng libssl-dev python-is-python3 python3-virtualenv clang-format clang-tidy clang-tools clang clangd libc++-dev libc++1 libc++abi-dev libc++abi1 libclang-dev libclang1 liblldb-dev libllvm-ocaml-dev libomp-dev libomp5 lld lldb llvm-dev llvm-runtime llvm python3-clang
+          sudo apt-get update && sudo apt-get install -y \
+            flex git ccache automake lzop bison gperf build-essential \
+            zip curl zlib1g-dev g++-multilib python3-networkx libxml2-utils \
+            bzip2 libbz2-dev squashfs-tools pngcrush schedtool dpkg-dev \
+            liblz4-tool optipng libssl-dev python-is-python3 \
+            python3-virtualenv clang-format clang-tidy clang-tools clang \
+            clangd libc++-dev libc++1 libc++abi-dev libc++abi1 libclang-dev \
+            libclang1 liblldb-dev libllvm-ocaml-dev libomp-dev libomp5 lld lldb \
+            llvm-dev llvm-runtime llvm python3-clang
           sudo apt-get install bc gcc-aarch64-linux-gnu
 
-      - name: Setup toolchain
+      - name: Setup environment
         run: |
           # Clone Proton Clang for LTO/Ccache
-          git clone https://gitlab.com/LeCmnGend/proton-clang -b clang-18 --depth=1 "${{ github.workspace }}/proton-clang"
+          git clone \
+            https://gitlab.com/LeCmnGend/proton-clang \
+            -b clang-18 --depth=1 "${{ github.workspace }}/proton-clang"
 
           # Install 'repo' tool
           mkdir -p ~/.bin
-          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/.bin/repo
+          curl \
+            https://storage.googleapis.com/git-repo-downloads/repo \
+            > ~/.bin/repo
           chmod a+rx ~/.bin/repo
 
           # Persist PATH for all steps
           echo "$HOME/.bin" >> $GITHUB_PATH
           echo "${{ github.workspace }}/proton-clang/bin" >> $GITHUB_PATH
 
-      - name: Configure kernel and apply SUSFS flags
+      - name: Setup SUSFS
         run: |
-          # Initial defconfig
-          make O=out ARCH=arm64 $DEFCONFIG
+          # Integrate KernelSU non‑GKI
+          echo ">>> Fetching & applying KernelSU (non-GKI) patches…"
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s nongki
 
-          # Append SUSFS flags
-          CONFIG_FILE="$(pwd)/out/.config"
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-kernel-4.19
+          git clone https://github.com/ShirkNeko/SukiSU_patch.git
+
+          cp ./SukiSU_patch/hooks/syscall_hooks.patch ./
+          echo "正在打vfs补丁"
+          patch -p1 -F 3 < syscall_hooks.patch
+          echo "vfs_patch完成"
+
+          cp ./susfs4ksu/kernel_patches/50_add_susfs_in_kernel-4.19.patch ./
+          cp ./susfs4ksu/kernel_patches/fs/* ./fs/
+          cp ./susfs4ksu/kernel_patches/include/linux/* ./include/linux/
+
+          export CONFIG_FILE = ./arch/arm64/configs/gale_defconfig
+
           echo "CONFIG_KSU_SUSFS=y" >> "$CONFIG_FILE"
           echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "$CONFIG_FILE"
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "$CONFIG_FILE"
           echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "$CONFIG_FILE"
           echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "$CONFIG_FILE"
           echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> "$CONFIG_FILE"
           echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "$CONFIG_FILE"
           echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "$CONFIG_FILE"
           echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$CONFIG_FILE"
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$CONFIG_FILE"
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$CONFIG_FILE"
 
-          # Refresh .config
-          make O=out ARCH=arm64 olddefconfig
-
-      - name: Apply syscall-hooks.patch
-        run: |
-          # Fetch syscall_hooks.patch directly from SukiSU-Ultra repo
-          curl -fsSL https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/refs/heads/main/hooks/syscall_hooks.patch -o syscall_hooks.patch
-          patch -p1 --fuzz=3 < syscall_hooks.patch || echo "Warning: some hunks failed to apply, check .rej files"
-
-      - name: Apply SUSFS4KSU backport patches
-        run: |
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b kernel-${KERNEL_VERSION} susfs4ksu
-          cp susfs4ksu/kernel_patches/50_add_susfs_in_gki-${ANDROID_VERSION}-${KERNEL_VERSION}.patch ./
-          cp -r susfs4ksu/kernel_patches/fs/* fs/
-          cp -r susfs4ksu/kernel_patches/include/linux/* include/linux/
-          rm -rf susfs4ksu
+          echo "CONFIG_KPM=y" >> "$CONFIG_FILE"
 
       - name: Build kernel
         run: |
+          # Ensure correct environment vars in build_kernel.sh
           chmod +x build_kernel.sh
           bash build_kernel.sh
+
+          # Check if KSU installed
+          grep -R "CONFIG_KSU" out/.config
 
       - name: Package kernel
         id: package
         run: |
-          ZIP_NAME="aquamarine-kernel-gale-$(date +%Y%m%d-%H%M)-run-${{ github.run_number }}-ksu-susfs.zip"
+          # Create unique filename with date, time, run number, and KSU flag
+          ZIP_NAME="aquamarine-kernel-gale-$(date +%Y%m%d-%H%M)-run-${{ github.run_number }}-ksu.zip"
           SHORT_NAME="${ZIP_NAME%.zip}"
 
-          git clone --depth=1 -b susfs https://github.com/kagiyanagi/AnyKernel3.git AnyKernel3
+          # Prepare AnyKernel3
+          git clone --depth=1 https://github.com/kagiyanagi/AnyKernel3.git AnyKernel3
           rm -rf AnyKernel3/{.git,.github,LICENSE,README.md}
 
+          # Copy only Image.gz into AnyKernel3
           KERNEL_OUT="out/arch/arm64/boot"
           if [[ -f "$KERNEL_OUT/Image.gz" ]]; then
             cp "$KERNEL_OUT/Image.gz" AnyKernel3/
-          elif [[ -f "$KERNEL_OUT/Image" ]]; then
-            cp "$KERNEL_OUT/Image" AnyKernel3/
           else
-            echo "Error: neither Image.gz nor Image found in $KERNEL_OUT" >&2
+            echo "Error: Image.gz not found in $KERNEL_OUT" >&2
             exit 1
           fi
 
+          # Copy dtbo if it exists
           if [[ -f "$KERNEL_OUT/dtbo.img" ]]; then
             cp "$KERNEL_OUT/dtbo.img" AnyKernel3/
           fi
 
+          # Zip the contents for GoFile upload
           cd AnyKernel3
           zip -r "../$ZIP_NAME" .
           cd ..
 
+          # Output both the real ZIP name and the plain artifact name
           echo "zip=$ZIP_NAME" >> $GITHUB_OUTPUT
           echo "artifact_name=$SHORT_NAME" >> $GITHUB_OUTPUT
 
       - name: Upload to GoFile
         id: gofile
         run: |
-          curl -fsSL https://raw.githubusercontent.com/Sushrut1101/GoFile-Upload/master/upload.sh -o upload.sh
+          # Download uploader script
+          curl -L \
+            https://raw.githubusercontent.com/Sushrut1101/GoFile-Upload/master/upload.sh \
+            -o upload.sh
           chmod +x upload.sh
-          URL=$(bash upload.sh "${{ steps.package.outputs.zip }}")
+
+          # Upload the packaged ZIP to GoFile
+          ZIP_FILE="${{ steps.package.outputs.zip }}"
+          URL=$(bash upload.sh "$ZIP_FILE")
+
           echo "url=$URL" >> $GITHUB_OUTPUT
           echo "GoFile download link: $URL"
 
