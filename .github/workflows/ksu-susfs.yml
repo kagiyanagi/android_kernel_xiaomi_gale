@@ -5,6 +5,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_VERSION: "15"
+      KERNEL_VERSION: "4.19"
+      DEFCONFIG: "gale_defconfig"
 
     steps:
       - name: Checkout repository
@@ -20,10 +24,10 @@ jobs:
             python3-virtualenv clang-format clang-tidy clang-tools clang \
             clangd libc++-dev libc++1 libc++abi-dev libc++abi1 libclang-dev \
             libclang1 liblldb-dev libllvm-ocaml-dev libomp-dev libomp5 lld lldb \
-            llvm-dev llvm-runtime llvm python3-clang
+            llvm-dev llvm-runtime llvm python3-clang \
           sudo apt-get install bc gcc-aarch64-linux-gnu
 
-      - name: Setup environment
+      - name: Setup toolchain
         run: |
           # Clone Proton Clang for LTO/Ccache
           git clone \
@@ -40,34 +44,50 @@ jobs:
           # Persist PATH for all steps
           echo "$HOME/.bin" >> $GITHUB_PATH
           echo "${{ github.workspace }}/proton-clang/bin" >> $GITHUB_PATH
-          
-          # Apply SUSFS patches
-          git clone --depth=1 https://github.com/SukiSU-Ultra/SukiSU-Ultra.git kernel_su
-          cd kernel_su/kernel
-          bash setup.sh susfs-main
-          # copy SUSFS headers into the top-level include tree
-          cp -r include/linux/susfs* ../../include/linux/
-          cd ../..
-          rm -rf kernel_su
+
+      - name: Configure kernel and apply SUSFS flags
+        run: |
+          # Initial defconfig
+          make O=out ARCH=arm64 $DEFCONFIG
+
+          # Append SUSFS flags
+          CONFIG_FILE="$(pwd)/out/.config"
+          echo "CONFIG_KSU_SUSFS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$CONFIG_FILE"
+
+          # Refresh .config
+          make O=out ARCH=arm64 olddefconfig
+
+      - name: Apply syscall-hooks.patch
+        run: |
+          # Copy and apply syscall hook patch
+          cp .github/patches/syscall_hooks.patch .
+          patch -p1 < syscall_hooks.patch
+
+      - name: Apply SUSFS4KSU backport patches
+        run: |
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git \
+            -b kernel-${KERNEL_VERSION} susfs4ksu
+          # copy core patch
+          cp susfs4ksu/kernel_patches/50_add_susfs_in_gki-${ANDROID_VERSION}-${KERNEL_VERSION}.patch ./
+          # backport fs and headers
+          cp -r susfs4ksu/kernel_patches/fs/* fs/
+          cp -r susfs4ksu/kernel_patches/include/linux/* include/linux/
+          rm -rf susfs4ksu
 
       - name: Build kernel
         run: |
           chmod +x build_kernel.sh
           bash build_kernel.sh
-          # Check if KSU installed
-          grep -R "CONFIG_KSU" out/.config
-
-      - name: Build kernel modules
-        run: |
-          make O=out ARCH=arm64 modules -j$(nproc)
-
-      - name: Copy SUSFS modules
-        run: |
-          MODULE_DIR="$(pwd)/out/arch/arm64/lib/modules/$(make -s O=out ARCH=arm64 kernelrelease)"
-          mkdir -p AnyKernel3/modules
-          cp "$MODULE_DIR"/susfs.ko AnyKernel3/modules/
-          # Optional: copy KernelSU manager if built
-          cp "$MODULE_DIR"/kpmmgr.ko AnyKernel3/modules/ || true
 
       - name: Package kernel
         id: package
@@ -75,29 +95,23 @@ jobs:
           ZIP_NAME="aquamarine-kernel-gale-$(date +%Y%m%d-%H%M)-run-${{ github.run_number }}-ksu-susfs.zip"
           SHORT_NAME="${ZIP_NAME%.zip}"
 
-          # Prepare AnyKernel3
           git clone --depth=1 -b susfs https://github.com/kagiyanagi/AnyKernel3.git AnyKernel3
           rm -rf AnyKernel3/{.git,.github,LICENSE,README.md}
 
-          # Copy kernel image into AnyKernel3
           KERNEL_OUT="out/arch/arm64/boot"
           if [[ -f "$KERNEL_OUT/Image.gz" ]]; then
             cp "$KERNEL_OUT/Image.gz" AnyKernel3/
-            echo "Copied Image.gz"
           elif [[ -f "$KERNEL_OUT/Image" ]]; then
             cp "$KERNEL_OUT/Image" AnyKernel3/
-            echo "Image.gz not found; copied Image instead"
           else
             echo "Error: neither Image.gz nor Image found in $KERNEL_OUT" >&2
             exit 1
           fi
 
-          # Copy dtbo if it exists
           if [[ -f "$KERNEL_OUT/dtbo.img" ]]; then
             cp "$KERNEL_OUT/dtbo.img" AnyKernel3/
           fi
 
-          # Zip the contents
           cd AnyKernel3
           zip -r "../$ZIP_NAME" .
           cd ..
@@ -112,10 +126,7 @@ jobs:
             https://raw.githubusercontent.com/Sushrut1101/GoFile-Upload/master/upload.sh \
             -o upload.sh
           chmod +x upload.sh
-
-          ZIP_FILE="${{ steps.package.outputs.zip }}"
-          URL=$(bash upload.sh "$ZIP_FILE")
-
+          URL=$(bash upload.sh "${{ steps.package.outputs.zip }}")
           echo "url=$URL" >> $GITHUB_OUTPUT
           echo "GoFile download link: $URL"
 
