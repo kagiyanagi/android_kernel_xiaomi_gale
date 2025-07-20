@@ -59,7 +59,7 @@ jobs:
           cp ./susfs4ksu/kernel_patches/fs/* ./fs/
           cp ./susfs4ksu/kernel_patches/include/linux/* ./include/linux/
 
-          export CONFIG_FILE = ./arch/arm64/configs/gale_defconfig
+          export CONFIG_FILE=./arch/arm64/configs/gale_defconfig
 
           echo "CONFIG_KSU_SUSFS=y" >> "$CONFIG_FILE"
           echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "$CONFIG_FILE"
