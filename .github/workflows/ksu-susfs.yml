@@ -30,15 +30,11 @@ jobs:
       - name: Setup toolchain
         run: |
           # Clone Proton Clang for LTO/Ccache
-          git clone \
-            https://gitlab.com/LeCmnGend/proton-clang \
-            -b clang-18 --depth=1 "${{ github.workspace }}/proton-clang"
+          git clone https://gitlab.com/LeCmnGend/proton-clang -b clang-18 --depth=1 "${{ github.workspace }}/proton-clang"
 
           # Install 'repo' tool
           mkdir -p ~/.bin
-          curl \
-            https://storage.googleapis.com/git-repo-downloads/repo \
-            > ~/.bin/repo
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/.bin/repo
           chmod a+rx ~/.bin/repo
 
           # Persist PATH for all steps
@@ -70,17 +66,13 @@ jobs:
       - name: Apply syscall-hooks.patch
         run: |
           # Fetch syscall_hooks.patch directly from SukiSU-Ultra repo
-          curl -L "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/hooks/syscall_hooks.patch" \
-            -o syscall_hooks.patch
+          curl -fsSL https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/SukiSU_patch/hooks/syscall_hooks.patch -o syscall_hooks.patch
           patch -p1 < syscall_hooks.patch
 
       - name: Apply SUSFS4KSU backport patches
         run: |
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git \
-            -b kernel-${KERNEL_VERSION} susfs4ksu
-          # copy core patch
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b kernel-${KERNEL_VERSION} susfs4ksu
           cp susfs4ksu/kernel_patches/50_add_susfs_in_gki-${ANDROID_VERSION}-${KERNEL_VERSION}.patch ./
-          # backport fs and headers
           cp -r susfs4ksu/kernel_patches/fs/* fs/
           cp -r susfs4ksu/kernel_patches/include/linux/* include/linux/
           rm -rf susfs4ksu
@@ -123,9 +115,7 @@ jobs:
       - name: Upload to GoFile
         id: gofile
         run: |
-          curl -L \
-            https://raw.githubusercontent.com/Sushrut1101/GoFile-Upload/master/upload.sh \
-            -o upload.sh
+          curl -fsSL https://raw.githubusercontent.com/Sushrut1101/GoFile-Upload/master/upload.sh -o upload.sh
           chmod +x upload.sh
           URL=$(bash upload.sh "${{ steps.package.outputs.zip }}")
           echo "url=$URL" >> $GITHUB_OUTPUT
