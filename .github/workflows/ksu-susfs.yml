@@ -45,15 +45,14 @@ jobs:
         run: |
           # Integrate KernelSU non‑GKI
           echo ">>> Fetching & applying KernelSU (non-GKI) patches…"
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git fs/susfs
           
-          CONFIG_FILE="$(pwd)/arch/arm64/configs/gale_defconfig"
-          echo "CONFIG_SUSFS=y" >> "$CONFIG_FILE"
-          echo "CONFIG_SUSFS_HAS_MAGIC_MOUNT=y" >> "$CONFIG_FILE"
-          echo "CONFIG_SUSFS_SUS_PATH=y" >> "$CONFIG_FILE"
-          echo "CONFIG_SUSFS_SUS_MOUNT=y" >> "$CONFIG_FILE"
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b kernel-4.19
+          cp ./susfs4ksu/kernel_patches/50_add_susfs_in_kernel-4.19.patch ./
+          cp ./susfs4ksu/kernel_patches/fs/* ./fs/
+          cp ./susfs4ksu/kernel_patches/include/linux/* ./include/linux/
+          echo "CONFIG_KPM=y" >> "./arch/arm64/configs/gale_defconfig"
           
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-1.5.7
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
 
       - name: Build kernel
         run: |
