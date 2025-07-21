@@ -51,6 +51,8 @@ jobs:
           cp ./susfs4ksu/kernel_patches/fs/* ./fs/
           cp ./susfs4ksu/kernel_patches/include/linux/* ./include/linux/
           echo "CONFIG_KPM=y" >> "./arch/arm64/configs/gale_defconfig"
+
+          patch -p1 < 50_add_susfs_in_kernel-4.19.patch
           
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-1.5.7
             
