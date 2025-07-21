@@ -43,17 +43,26 @@ jobs:
 
       - name: Setup SUSFS
         run: |
-          # Integrate KernelSU non‑GKI
-          echo ">>> Fetching & applying KernelSU (non-GKI) patches…"
-          
+          # 1. Clone the susfs4ksu repo with its patches
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b kernel-4.19
-          cp ./susfs4ksu/kernel_patches/50_add_susfs_in_kernel-4.19.patch ./
-          cp ./susfs4ksu/kernel_patches/fs/* ./fs/
-          cp ./susfs4ksu/kernel_patches/include/linux/* ./include/linux/
-          echo "CONFIG_KPM=y" >> "./arch/arm64/configs/gale_defconfig"
-          
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
 
+          # 2. Apply all of its .patch files (this will drop fs/susfs,
+          #    update include/linux/susfs.h with CMD_SUSFS_* defs, and
+          #    hook up Makefile/Kconfig entries, too)
+          for p in susfs4ksu/kernel_patches/*.patch; do
+            patch -p1 < "$p"
+          done
+
+          # 3. Enable SUSFS in your defconfig
+          DEF=arch/arm64/configs/gale_defconfig
+          for opt in SUSFS SUSFS_HAS_MAGIC_MOUNT SUSFS_SUS_PATH SUSFS_SUS_MOUNT; do
+            echo "CONFIG_${opt}=y" >> "${DEF}"
+          done
+
+          # 4. Now apply KernelSU (susfs‑aware)
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" \
+            | bash -s susfs-main
+            
       - name: Build kernel
         run: |
           # Ensure correct environment vars in build_kernel.sh
