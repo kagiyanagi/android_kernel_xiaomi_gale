@@ -53,7 +53,7 @@ jobs:
           echo "CONFIG_SUSFS_SUS_PATH=y" >> "$CONFIG_FILE"
           echo "CONFIG_SUSFS_SUS_MOUNT=y" >> "$CONFIG_FILE"
           
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-1.5.7
 
       - name: Build kernel
         run: |
